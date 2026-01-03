@@ -54,6 +54,14 @@ class ModelTrainer:
         mlruns_dir = os.path.join(os.getcwd(), "mlruns")
         os.makedirs(mlruns_dir, exist_ok=True)
         mlflow.set_tracking_uri(f"file://{mlruns_dir}")
+
+        # Explicitly create experiment with local artifact_location
+        experiment = mlflow.get_experiment_by_name(experiment_name)
+        if experiment is None:
+            mlflow.create_experiment(
+                name=experiment_name,
+                artifact_location=os.path.abspath(f"mlruns/{experiment_name}"),
+            )
         mlflow.set_experiment(experiment_name)
 
         # --------------------------
