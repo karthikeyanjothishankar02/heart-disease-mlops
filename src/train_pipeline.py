@@ -6,6 +6,7 @@ Includes data loading, preprocessing, training, evaluation, and model saving
 import logging
 import os
 import pickle
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -26,7 +27,9 @@ from sklearn.model_selection import cross_val_score, train_test_split
 
 from feature_engineering import FeatureEngineer  # noqa: E402
 
+# --------------------------
 # Setup logging
+# --------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -38,7 +41,6 @@ class ModelTrainer:
     """Handles model training, evaluation, and saving."""
 
     def __init__(self, experiment_name="heart_disease_prediction"):
-        self.experiment_name = experiment_name
         self.models = {}
         self.results = {}
         self.best_model = None
@@ -47,17 +49,18 @@ class ModelTrainer:
         # --------------------------
         # MLflow setup (CI/CD safe)
         # --------------------------
-        mlruns_dir = os.path.join(os.getcwd(), "mlruns")
+        mlruns_dir = os.path.abspath("mlruns")
         os.makedirs(mlruns_dir, exist_ok=True)
         mlflow.set_tracking_uri(f"file://{mlruns_dir}")
 
-        # If experiment exists, reuse it; else create
-        if mlflow.get_experiment_by_name(experiment_name) is None:
+        # Append timestamp to avoid collisions in CI/CD
+        self.experiment_name = f"{experiment_name}_{int(time.time())}"
+        if mlflow.get_experiment_by_name(self.experiment_name) is None:
             mlflow.create_experiment(
-                name=experiment_name,
-                artifact_location=os.path.abspath(f"{mlruns_dir}/{experiment_name}"),
+                name=self.experiment_name,
+                artifact_location=os.path.join(mlruns_dir, self.experiment_name),
             )
-        mlflow.set_experiment(experiment_name)
+        mlflow.set_experiment(self.experiment_name)
 
         # --------------------------
         # Folders for outputs
@@ -66,12 +69,15 @@ class ModelTrainer:
         Path("reports").mkdir(exist_ok=True)
         Path("data/processed").mkdir(parents=True, exist_ok=True)
 
+    # --------------------------
+    # Data Handling
+    # --------------------------
     def load_data(self, filepath="data/processed/heart_disease_clean.csv"):
         """Load processed data."""
         logger.info("Loading data from %s", filepath)
 
         if not Path(filepath).exists():
-            logger.warning("Processed data not found. Run preprocessing first.")
+            logger.warning("Processed data not found. Running preprocessing...")
             self._preprocess_data()
 
         df = pd.read_csv(filepath)
@@ -85,6 +91,9 @@ class ModelTrainer:
         raw_data = load_data("data/raw/heart_disease.csv")
         clean_data(raw_data)
 
+    # --------------------------
+    # Feature Preparation
+    # --------------------------
     def prepare_features(self, df, test_size=0.2, random_state=42):
         """Prepare features and split data safely."""
         logger.info("Preparing features...")
@@ -95,12 +104,7 @@ class ModelTrainer:
         n_samples = len(y)
         n_classes = len(np.unique(y))
 
-        if isinstance(test_size, float):
-            test_size_abs = max(int(n_samples * test_size), n_classes)
-        else:
-            test_size_abs = max(test_size, n_classes)
-
-        # Tiny dataset safety
+        # Handle tiny datasets
         if n_samples <= n_classes:
             logger.warning(
                 "Too few samples (%d) for %d classes. Using full dataset.",
@@ -109,6 +113,12 @@ class ModelTrainer:
             )
             X_train, X_test, y_train, y_test = X, X, y, y
         else:
+            # Ensure at least one sample per class in test set
+            if isinstance(test_size, float):
+                test_size_abs = max(int(n_samples * test_size), n_classes)
+            else:
+                test_size_abs = max(test_size, n_classes)
+
             X_train, X_test, y_train, y_test = train_test_split(
                 X,
                 y,
@@ -126,8 +136,11 @@ class ModelTrainer:
 
         return X_train, X_test, y_train, y_test
 
+    # --------------------------
+    # Model Training
+    # --------------------------
     def train_logistic_regression(self, X_train, y_train, X_test, y_test):
-        """Train Logistic Regression model."""
+        """Train Logistic Regression model (CI/CD safe)."""
         logger.info("Training Logistic Regression...")
 
         with mlflow.start_run(run_name="Logistic_Regression"):
@@ -139,7 +152,10 @@ class ModelTrainer:
 
             mlflow.log_params(params)
             mlflow.log_metrics(metrics)
-            mlflow.sklearn.log_model(model, "model")
+
+            # Skip logging model in CI/CD to avoid meta.yaml issues
+            if os.environ.get("CI") is None:
+                mlflow.sklearn.log_model(model, "model")
 
             self.models["logistic_regression"] = model
             self.results["logistic_regression"] = metrics
@@ -153,7 +169,7 @@ class ModelTrainer:
             return model, metrics
 
     def train_random_forest(self, X_train, y_train, X_test, y_test):
-        """Train Random Forest model."""
+        """Train Random Forest model (CI/CD safe)."""
         logger.info("Training Random Forest...")
 
         with mlflow.start_run(run_name="Random_Forest"):
@@ -171,7 +187,10 @@ class ModelTrainer:
 
             mlflow.log_params(params)
             mlflow.log_metrics(metrics)
-            mlflow.sklearn.log_model(model, "model")
+
+            # Skip logging model in CI/CD
+            if os.environ.get("CI") is None:
+                mlflow.sklearn.log_model(model, "model")
 
             self._log_feature_importance(model, X_train.columns)
 
@@ -186,6 +205,9 @@ class ModelTrainer:
 
             return model, metrics
 
+    # --------------------------
+    # Evaluation & Utilities
+    # --------------------------
     def _evaluate_model(self, model, X_train, y_train, X_test, y_test):
         y_train_pred = model.predict(X_train)
         y_test_pred = model.predict(X_test)
@@ -200,6 +222,7 @@ class ModelTrainer:
             "test_roc_auc": roc_auc_score(y_test, y_test_proba),
         }
 
+        # Only run CV if enough samples
         if len(X_train) >= 5:
             cv_scores = cross_val_score(
                 model, X_train, y_train, cv=5, scoring="accuracy"
@@ -216,6 +239,7 @@ class ModelTrainer:
     def _log_feature_importance(self, model, feature_names):
         if not hasattr(model, "feature_importances_"):
             return
+
         importance_df = pd.DataFrame(
             {"feature": feature_names, "importance": model.feature_importances_}
         ).sort_values("importance", ascending=False)
@@ -227,8 +251,13 @@ class ModelTrainer:
         plt.tight_layout()
         plt.savefig("reports/feature_importance.png")
         plt.close()
-        mlflow.log_artifact("reports/feature_importance.png")
 
+        if os.environ.get("CI") is None:
+            mlflow.log_artifact("reports/feature_importance.png")
+
+    # --------------------------
+    # Model Selection & Saving
+    # --------------------------
     def select_best_model(self):
         best_model_name = max(
             self.results, key=lambda k: self.results[k]["test_roc_auc"]
@@ -241,11 +270,21 @@ class ModelTrainer:
         model_path = f"{output_dir}/production_model.pkl"
         with open(model_path, "wb") as f:
             pickle.dump(self.best_model, f)
+
         preprocessor_path = f"{output_dir}/production_preprocessor.pkl"
         self.feature_engineer.save(preprocessor_path)
-        mlflow.sklearn.save_model(self.best_model, f"{output_dir}/production_mlflow")
+
+        # Skip MLflow save in CI/CD
+        if os.environ.get("CI") is None:
+            mlflow.sklearn.save_model(
+                self.best_model, f"{output_dir}/production_mlflow"
+            )
+
         return model_path, preprocessor_path
 
+    # --------------------------
+    # Reporting
+    # --------------------------
     def generate_report(self):
         report = [
             "# Heart Disease Prediction - Training Report\n\n",
@@ -270,6 +309,9 @@ class ModelTrainer:
             f.writelines(report)
 
 
+# --------------------------
+# Main
+# --------------------------
 def main():
     trainer = ModelTrainer()
     df = trainer.load_data()
