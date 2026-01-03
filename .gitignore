@@ -7,9 +7,6 @@ __pycache__/
 venv/
 env/
 
-# Data
-data/raw/*.csv
-data/processed/*.csv
 
 # Models
 models/*.pkl
