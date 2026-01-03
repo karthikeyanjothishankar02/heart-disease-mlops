@@ -25,11 +25,10 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import cross_val_score, train_test_split
 
-# Add src to path
+# Add src to path for internal imports
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from feature_engineering import FeatureEngineer  # noqa: E402
-
 
 # Setup logging
 logging.basicConfig(
@@ -49,9 +48,17 @@ class ModelTrainer:
         self.best_model = None
         self.best_score = 0
 
-        mlflow.set_tracking_uri("file:./mlruns")
+        # --------------------------
+        # MLflow setup (CI/CD safe)
+        # --------------------------
+        mlruns_dir = os.path.join(os.getcwd(), "mlruns")
+        os.makedirs(mlruns_dir, exist_ok=True)
+        mlflow.set_tracking_uri(f"file://{mlruns_dir}")
         mlflow.set_experiment(experiment_name)
 
+        # --------------------------
+        # Folders for outputs
+        # --------------------------
         Path("models").mkdir(exist_ok=True)
         Path("reports").mkdir(exist_ok=True)
         Path("data/processed").mkdir(parents=True, exist_ok=True)
@@ -110,11 +117,7 @@ class ModelTrainer:
                 stratify=y if test_size_abs >= n_classes else None,
             )
 
-        logger.info(
-            "Training set: %s, Test set: %s",
-            X_train.shape,
-            X_test.shape,
-        )
+        logger.info("Training set: %s, Test set: %s", X_train.shape, X_test.shape)
         logger.info(
             "Class distribution - Train: %s, Test: %s",
             np.bincount(y_train),
@@ -207,11 +210,7 @@ class ModelTrainer:
 
         if len(X_train) >= 5:  # Only do CV if enough samples
             cv_scores = cross_val_score(
-                model,
-                X_train,
-                y_train,
-                cv=5,
-                scoring="accuracy",
+                model, X_train, y_train, cv=5, scoring="accuracy"
             )
             metrics["cv_mean"] = cv_scores.mean()
             metrics["cv_std"] = cv_scores.std()
@@ -229,17 +228,11 @@ class ModelTrainer:
             return
 
         importance_df = pd.DataFrame(
-            {
-                "feature": feature_names,
-                "importance": model.feature_importances_,
-            }
+            {"feature": feature_names, "importance": model.feature_importances_}
         ).sort_values("importance", ascending=False)
 
         plt.figure(figsize=(10, 6))
-        plt.barh(
-            importance_df["feature"][:10],
-            importance_df["importance"][:10],
-        )
+        plt.barh(importance_df["feature"][:10], importance_df["importance"][:10])
         plt.xlabel("Importance")
         plt.title("Top 10 Feature Importances")
         plt.tight_layout()
@@ -255,14 +248,11 @@ class ModelTrainer:
         best_model_name = max(
             self.results, key=lambda k: self.results[k]["test_roc_auc"]
         )
-
         self.best_model = self.models[best_model_name]
         self.best_score = self.results[best_model_name]["test_roc_auc"]
 
         logger.info(
-            "Best model: %s with ROC-AUC: %.4f",
-            best_model_name,
-            self.best_score,
+            "Best model: %s with ROC-AUC: %.4f", best_model_name, self.best_score
         )
 
         return best_model_name, self.best_model
@@ -278,13 +268,9 @@ class ModelTrainer:
         preprocessor_path = f"{output_dir}/production_preprocessor.pkl"
         self.feature_engineer.save(preprocessor_path)
 
-        mlflow.sklearn.save_model(
-            self.best_model,
-            f"{output_dir}/production_mlflow",
-        )
+        mlflow.sklearn.save_model(self.best_model, f"{output_dir}/production_mlflow")
 
         logger.info("Production model saved to %s", output_dir)
-
         return model_path, preprocessor_path
 
     def generate_report(self):
