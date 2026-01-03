@@ -55,13 +55,17 @@ class ModelTrainer:
         os.makedirs(mlruns_dir, exist_ok=True)
         mlflow.set_tracking_uri(f"file://{mlruns_dir}")
 
-        # Explicitly create experiment with local artifact_location
-        experiment = mlflow.get_experiment_by_name(experiment_name)
-        if experiment is None:
-            mlflow.create_experiment(
-                name=experiment_name,
-                artifact_location=os.path.abspath(f"mlruns/{experiment_name}"),
-            )
+        # Force create experiment with local artifact location
+        artifact_location = os.path.abspath(f"mlruns/{experiment_name}")
+
+        # Delete old experiment if exists (avoids cached macOS paths)
+        old_exp = mlflow.get_experiment_by_name(experiment_name)
+        if old_exp is not None:
+            mlflow.delete_experiment(old_exp.experiment_id)
+
+        mlflow.create_experiment(
+            name=experiment_name, artifact_location=artifact_location
+        )
         mlflow.set_experiment(experiment_name)
 
         # --------------------------
@@ -110,7 +114,7 @@ class ModelTrainer:
         if n_samples <= n_classes:
             logger.warning(
                 """Too few samples (%d) for %d classes.
-                Using full dataset as train/test.""",
+            Using full dataset as train/test.""",
                 n_samples,
                 n_classes,
             )
