@@ -119,7 +119,6 @@ class PatientData(BaseModel):
     ca: int
     thal: int
 
-
 # ---------------------------------------------------------------------
 # MIDDLEWARE
 # ---------------------------------------------------------------------
@@ -132,72 +131,55 @@ async def monitoring_middleware(request, call_next):
         response = await call_next(request)
         process_time = time.time() - start_time
 
+        # Normalize endpoint (remove trailing slash)
+        endpoint = request.url.path.rstrip("/")
+
+        # Increment request counter
         REQUEST_COUNT.labels(
             method=request.method,
-            endpoint=request.url.path,
+            endpoint=endpoint,
             status=response.status_code,
         ).inc()
 
-        REQUEST_LATENCY.labels(
-            endpoint=request.url.path
-        ).observe(process_time)
+        # Record latency
+        REQUEST_LATENCY.labels(endpoint=endpoint).observe(process_time)
 
-        response.headers["X-Process-Time"] = str(process_time)
+        # Add process time header
+        response.headers["X-Process-Time"] = f"{process_time:.4f}s"
+
         return response
 
     finally:
         ACTIVE_REQUESTS.dec()
-
 
 # ---------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------
 @app.get("/")
 def root():
-    return {
-        "message": "Heart Disease Prediction API",
-        "status": "running",
-    }
+    return {"message": "Heart Disease Prediction API", "status": "running"}
 
 
 @app.get("/health")
 def health():
-    return {
-        "status": "healthy",
-        "model_loaded": model is not None,
-    }
+    return {"status": "healthy", "model_loaded": model is not None}
 
 
 @app.get("/metrics")
 def metrics():
-    return Response(
-        generate_latest(),
-        media_type=CONTENT_TYPE_LATEST,
-    )
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/predict")
 def predict(data: PatientData):
     try:
-        # Convert request to DataFrame (CRITICAL FIX)
+        # Convert request to DataFrame
         input_df = pd.DataFrame(
-            [
-                [
-                    data.age,
-                    data.sex,
-                    data.cp,
-                    data.trestbps,
-                    data.chol,
-                    data.fbs,
-                    data.restecg,
-                    data.thalach,
-                    data.exang,
-                    data.oldpeak,
-                    data.slope,
-                    data.ca,
-                    data.thal,
-                ]
-            ],
+            [[
+                data.age, data.sex, data.cp, data.trestbps, data.chol,
+                data.fbs, data.restecg, data.thalach, data.exang, data.oldpeak,
+                data.slope, data.ca, data.thal
+            ]],
             columns=FEATURE_COLUMNS,
         )
 
@@ -208,10 +190,8 @@ def predict(data: PatientData):
         prediction = int(model.predict(features_scaled)[0])
         probability = model.predict_proba(features_scaled)[0]
 
-        # Metrics
-        PREDICTION_COUNT.labels(
-            prediction=str(prediction)
-        ).inc()
+        # Increment prediction counter
+        PREDICTION_COUNT.labels(prediction=str(prediction)).inc()
 
         logger.info(
             "Prediction=%s Confidence=%.4f Age=%s Sex=%s",
@@ -233,7 +213,4 @@ def predict(data: PatientData):
 
     except Exception as exc:
         logger.exception("Prediction failed")
-        raise HTTPException(
-            status_code=500,
-            detail="Prediction failed",
-        ) from exc
+        raise HTTPException(status_code=500, detail="Prediction failed") from exc
