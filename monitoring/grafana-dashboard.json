@@ -1,0 +1,57 @@
+{
+    "dashboard": {
+      "title": "Heart Disease API Monitoring",
+      "panels": [
+        {
+          "title": "Total Requests",
+          "targets": [
+            {
+              "expr": "sum(rate(api_requests_total[5m]))",
+              "legendFormat": "Requests per second"
+            }
+          ],
+          "type": "graph"
+        },
+        {
+          "title": "Request Latency",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(request_latency_seconds_bucket[5m]))",
+              "legendFormat": "95th percentile"
+            }
+          ],
+          "type": "graph"
+        },
+        {
+          "title": "Predictions Distribution",
+          "targets": [
+            {
+              "expr": "sum by (prediction) (predictions_total)",
+              "legendFormat": "{{prediction}}"
+            }
+          ],
+          "type": "graph"
+        },
+        {
+          "title": "Active Requests",
+          "targets": [
+            {
+              "expr": "active_requests",
+              "legendFormat": "Active"
+            }
+          ],
+          "type": "graph"
+        },
+        {
+          "title": "Error Rate",
+          "targets": [
+            {
+              "expr": "sum(rate(api_requests_total{status=~\"5..\"}[5m])) / sum(rate(api_requests_total[5m]))",
+              "legendFormat": "Error rate"
+            }
+          ],
+          "type": "graph"
+        }
+      ]
+    }
+  }
