@@ -579,11 +579,11 @@ docker logs <container-id>
 
 ## 👥 Contributors
 
-Karthikeyan J - 2024AA05372 - 100%
-Anandhan A - 2024AA05269 - 100%
-Ganapathy Subramanian S - 2024AA05188 - 100%
-Jangale Savedana Subash Prathibha - 2024AA05187 - 100%
-Rohith Raj R - 2024AA05337 - 100%
+Karthikeyan J - 2024AA05372 - 100% <br><br>
+Anandhan A - 2024AA05269 - 100% <br><br>
+Ganapathy Subramanian S - 2024AA05188 - 100% <br><br>
+Jangale Savedana Subash Prathibha - 2024AA05187 - 100% <br><br>
+Rohith Raj R - 2024AA05337 - 100% <br><br>
 
 ---
 
