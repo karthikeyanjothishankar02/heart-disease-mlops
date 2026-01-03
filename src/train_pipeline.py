@@ -55,6 +55,28 @@ class ModelTrainer:
         os.makedirs(mlruns_dir, exist_ok=True)
         mlflow.set_tracking_uri(f"file://{mlruns_dir}")
 
+        # Delete old experiment if exists
+        old_exp = mlflow.get_experiment_by_name(experiment_name)
+        if old_exp is not None:
+            mlflow.delete_experiment(old_exp.experiment_id)
+
+        # Create experiment (let MLflow handle artifact location inside mlruns/)
+        mlflow.set_experiment(experiment_name)
+
+        # --------------------------
+        # Folders for outputs
+        # --------------------------
+        Path("models").mkdir(exist_ok=True)
+        Path("reports").mkdir(exist_ok=True)
+        Path("data/processed").mkdir(parents=True, exist_ok=True)
+
+        # --------------------------
+        # MLflow setup (CI/CD safe)
+        # --------------------------
+        mlruns_dir = os.path.join(os.getcwd(), "mlruns")
+        os.makedirs(mlruns_dir, exist_ok=True)
+        mlflow.set_tracking_uri(f"file://{mlruns_dir}")
+
         # Force create experiment with local artifact location
         artifact_location = os.path.abspath(f"mlruns/{experiment_name}")
 
