@@ -35,7 +35,7 @@ services:
     build: ..
     container_name: heart-disease-api
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - PROMETHEUS_ENABLED=true
     networks:
