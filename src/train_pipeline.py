@@ -76,19 +76,39 @@ class ModelTrainer:
         clean_data(raw_data)
 
     def prepare_features(self, df, test_size=0.2, random_state=42):
-        """Prepare features and split data."""
+        """Prepare features and split data safely, even for tiny datasets."""
         logger.info("Preparing features...")
 
         self.feature_engineer = FeatureEngineer()
         X, y = self.feature_engineer.fit_transform(df)
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=test_size,
-            random_state=random_state,
-            stratify=y,
-        )
+        n_samples = len(y)
+        n_classes = len(np.unique(y))
+
+        # Convert fractional test_size to absolute number
+        if isinstance(test_size, float):
+            test_size_abs = max(int(n_samples * test_size), n_classes)
+        else:
+            test_size_abs = max(test_size, n_classes)
+
+        # If dataset too small, skip stratified split
+        if n_samples <= n_classes:
+            logger.warning(
+                """Too few samples (%d) for %d classes.
+                Using full dataset as train/test.""",
+                n_samples,
+                n_classes,
+            )
+            X_train, X_test, y_train, y_test = X, X, y, y
+        else:
+            logger.info("Splitting dataset with test_size=%d", test_size_abs)
+            X_train, X_test, y_train, y_test = train_test_split(
+                X,
+                y,
+                test_size=test_size_abs,
+                random_state=random_state,
+                stratify=y if test_size_abs >= n_classes else None,
+            )
 
         logger.info(
             "Training set: %s, Test set: %s",
@@ -185,16 +205,20 @@ class ModelTrainer:
             "test_roc_auc": roc_auc_score(y_test, y_test_proba),
         }
 
-        cv_scores = cross_val_score(
-            model,
-            X_train,
-            y_train,
-            cv=5,
-            scoring="accuracy",
-        )
+        if len(X_train) >= 5:  # Only do CV if enough samples
+            cv_scores = cross_val_score(
+                model,
+                X_train,
+                y_train,
+                cv=5,
+                scoring="accuracy",
+            )
+            metrics["cv_mean"] = cv_scores.mean()
+            metrics["cv_std"] = cv_scores.std()
+        else:
+            metrics["cv_mean"] = np.nan
+            metrics["cv_std"] = np.nan
 
-        metrics["cv_mean"] = cv_scores.mean()
-        metrics["cv_std"] = cv_scores.std()
         metrics["overfit_gap"] = metrics["train_accuracy"] - metrics["test_accuracy"]
 
         return metrics

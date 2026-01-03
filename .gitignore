@@ -8,11 +8,6 @@ venv/
 env/
 
 
-# Models
-models/*.pkl
-models/*.h5
-mlruns/
-
 # IDE
 .vscode/
 .idea/
