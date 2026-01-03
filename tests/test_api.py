@@ -5,7 +5,7 @@ import sys
 import os
 
 # Mock the model loading for testing
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 import numpy as np
 
 # Add parent directory to path
@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 def mock_model():
     """Create a mock model for testing"""
     model = Mock()
+    # Return a numpy array so [0] indexing works
     model.predict.return_value = np.array([1])
     model.predict_proba.return_value = np.array([[0.3, 0.7]])
     return model
@@ -25,18 +26,21 @@ def mock_model():
 def mock_preprocessor():
     """Create a mock preprocessor for testing"""
     preprocessor = Mock()
+    # Return a shape compatible with the model input
     preprocessor.transform.return_value = np.random.randn(1, 13)
     return preprocessor
 
 
 @pytest.fixture
 def client(mock_model, mock_preprocessor):
-    """Create test client with mocked model"""
-    with patch("pickle.load") as mock_load:
-        mock_load.side_effect = [mock_model, mock_preprocessor]
-        from api.app import app
+    """Create test client with mocked model and preprocessor"""
+    from api import app as api_app
 
-        return TestClient(app)
+    # Patch the app's model and preprocessor directly
+    api_app.model = mock_model
+    api_app.preprocessor = mock_preprocessor
+
+    return TestClient(api_app.app)
 
 
 class TestAPI:
